@@ -1,11 +1,13 @@
-from dash import html, Output, Input, State, dcc, dash_table
+from dash import html, Output, Input, State, dcc
+from dash.html import Div
 from dash_extensions.enrich import (DashProxy,
                                     ServersideOutputTransform,
                                     MultiplexerTransform)
 import dash_mantine_components as dmc
-from dash.exceptions import PreventUpdate
 import pandas as pd
+import plotly.express as px
 from sqlalchemy import create_engine
+from datetime import datetime, timedelta
 
 CARD_STYLE = dict(withBorder=True,
                   shadow="sm",
@@ -20,44 +22,73 @@ class EncostDash(DashProxy):
                                      MultiplexerTransform()], **kwargs)
 
 
-engine = create_engine("sqlite://///home/sergey/PycharmProjects/testtask/test_task/testDB.db")
+"""
+    Запрос из базы данных
+"""
+engine = create_engine("sqlite:///../testDB.db")
 query = """
 SELECT *
 FROM sources
 """
 df = pd.read_sql(query, con=engine)
-print(df)
+
+"""
+    Цветовая схема
+"""
+color_map = dict(zip(df['reason'], df['color']))
+
 app = EncostDash(name=__name__)
 
 
-def get_layout():
+def get_date() -> datetime:
+    """
+    Преобразование даты/времени
+    :return:
+    """
+    time_str = df.shift_begin[0]
+    date_str = df.calendar_day[0]
+    time = datetime.strptime(time_str, '%H:%M:%S')
+    date = datetime.strptime(date_str, '%Y-%m-%d')
+    formatted_datetime = time.replace(year=date.year,
+                                      month=date.month,
+                                      day=date.day)
+    return formatted_datetime
+
+
+def get_layout() -> Div:
     return html.Div([
         dmc.Paper([
             dmc.Grid([
                 dmc.Col([
                     dmc.Card([
-                        dmc.TextInput(
-                            label='Введите что-нибудь',
-                            id='input'),
-                        dmc.Button(
-                            'Первая кнопка',
-                            id='button1'),
-                        dmc.Button(
-                            'Вторая кнопка',
-                            id='button2'),
-                        html.Div(
-                            id='output')],
+                        html.H1(['Клиент: ', df.client_name[0]]),
+                        html.Br(),
+                        html.P(['Сменный день: ',
+                                df.shift_day[0]]),
+                        html.P(['Точка учета: ',
+                                df.endpoint_name[0]]),
+                        html.P(['Начало периода: ',
+                                get_date().strftime('%H:%M:%S (%d.%m)')]),
+                        html.P(['Конец периода: ',
+                                (get_date() + timedelta(days=1)).strftime('%H:%M:%S (%d.%m)')]),
+                        dcc.Dropdown(df.reason.unique(),
+                                     id='filters',
+                                     multi=True),
+                        dmc.Button('Фильтровать',
+                                   id='button'),
+                        ],
                         **CARD_STYLE)
                 ], span=6),
                 dmc.Col([
                     dmc.Card([
-                        html.Div('Верхняя правая карточка')],
+                        dcc.Graph(id="graph"),
+                        dcc.Input(id='initial_pie', disabled=True)],
                         **CARD_STYLE),
 
                 ], span=6),
                 dmc.Col([
                     dmc.Card([
-                        html.Div('Нижняя карточка')],
+                        dcc.Graph(id='timeline')],
                         **CARD_STYLE)
                 ], span=12),
             ], gutter="xl", )
@@ -69,35 +100,42 @@ app.layout = get_layout()
 
 
 @app.callback(
-    Output('output', 'children'),
-    State('input', 'value'),
-    Input('button1', 'n_clicks'),
-    prevent_initial_call=True,
+    Output('timeline', 'figure'),
+    State('filters', 'value'),
+    Input('initial_pie', 'value'),
+    Input('button', 'n_clicks'),
+    prevent_initial_call=False,
 )
-def update_div1(
+def update_graph(
         value,
-        click
+        *args
 ):
-    if click is None:
-        raise PreventUpdate
 
-    return f'Первая кнопка нажата, данные: {value}'
+    fig = px.timeline(df,
+                      'state_begin',
+                      'state_end',
+                      y="endpoint_name",
+                      color='reason',
+                      color_discrete_map=color_map)
+    if value:
+        fig.update_traces(visible='legendonly')
+        for reason in value:
+            fig.update_traces(selector={'name': reason}, visible=True)
+    fig.update_layout(showlegend=False)
+    return fig
 
 
 @app.callback(
-    Output('output', 'children'),
-    State('input', 'value'),
-    Input('button2', 'n_clicks'),
-    prevent_initial_call=True,
-)
-def update_div2(
-        value,
-        click
-):
-    if click is None:
-        raise PreventUpdate
-
-    return f'Вторая кнопка нажата, данные: {value}'
+    Output("graph", "figure"),
+    Input("initial_pie", "value"))
+def generate_chart(_):
+    fig = px.pie(df,
+                 values='duration_min',
+                 names='reason',
+                 hole=.3,
+                 color='reason',
+                 color_discrete_map=color_map)
+    return fig
 
 
 if __name__ == '__main__':
