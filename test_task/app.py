@@ -1,15 +1,14 @@
+from datetime import timedelta
 from pathlib import Path
 
-from dash import html, Output, Input, State, dcc
-from dash.html import Div
-from dash_extensions.enrich import (DashProxy,
-                                    ServersideOutputTransform,
-                                    MultiplexerTransform)
 import dash_mantine_components as dmc
 import pandas as pd
 import plotly.express as px
+from dash import Input, Output, State, dcc, html
+from dash.html import Div
+from dash_extensions.enrich import (DashProxy, MultiplexerTransform,
+                                    ServersideOutputTransform)
 from sqlalchemy import create_engine
-from datetime import timedelta
 
 CARD_STYLE = dict(withBorder=True,
                   shadow="sm",
@@ -27,8 +26,8 @@ class EncostDash(DashProxy):
 """
     Запрос из базы данных
 """
-APP_PATH = str(Path(__file__).parents[1])
-engine = create_engine(f"sqlite:///{APP_PATH}/testDB.db")
+DB_PATH = str(Path(__file__).parents[1])
+engine = create_engine(f"sqlite:///{DB_PATH}/testDB.db")
 query = """
 SELECT *
 FROM sources
@@ -81,6 +80,7 @@ def get_layout() -> Div:
                 ], span=6),
                 dmc.Col([
                     dmc.Card([
+                        html.H4('График состояний', style={'text-align': 'center'}),
                         dcc.Graph(id='timeline')],
                         **CARD_STYLE)
                 ], span=12),
@@ -99,6 +99,9 @@ app.layout = get_layout()
     Input('button', 'n_clicks'),
 )
 def update_graph(value, *args):
+    """
+    Обновление графика состояний
+    """
     fig = px.timeline(df,
                       'state_begin',
                       'state_end',
@@ -137,6 +140,9 @@ def update_graph(value, *args):
     Output("graph", "figure"),
     Input("initial_pie", "value"))
 def generate_chart(_):
+    """
+    Отрисовка круговой диаграммы
+    """
     fig = px.pie(df,
                  values='duration_min',
                  names='reason',
