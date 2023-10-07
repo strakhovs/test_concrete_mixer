@@ -49,6 +49,7 @@ app = EncostDash(name=__name__)
 
 
 def get_layout() -> Div:
+    period_begin = (df.shift_day[0] + timedelta(hours=df.shift_begin[0].hour))
     return html.Div([
         dmc.Paper([
             dmc.Grid([
@@ -61,9 +62,9 @@ def get_layout() -> Div:
                         html.P(['Точка учета: ',
                                 df.endpoint_name[0]]),
                         html.P(['Начало периода: ',
-                                (df.shift_day[0] + timedelta(hours=df.shift_begin[0].hour)).strftime('%H:%M:%S (%d.%m)')]),
+                                period_begin.strftime('%H:%M:%S (%d.%m)')]),
                         html.P(['Конец периода: ',
-                                (df.shift_day[0] + timedelta(days=1, hours=df.shift_begin[0].hour)).strftime('%H:%M:%S (%d.%m)')]),
+                                (period_begin + timedelta(days=1)).strftime('%H:%M:%S (%d.%m)')]),
                         dmc.MultiSelect(id='filters',
                                         data=df.reason.unique()),
                         dmc.Button('Фильтровать',
@@ -80,7 +81,8 @@ def get_layout() -> Div:
                 ], span=6),
                 dmc.Col([
                     dmc.Card([
-                        html.H4('График состояний', style={'text-align': 'center'}),
+                        html.H4('График состояний',
+                                style={'text-align': 'center'}),
                         dcc.Graph(id='timeline')],
                         **CARD_STYLE)
                 ], span=12),
