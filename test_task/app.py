@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from dash import html, Output, Input, State, dcc
 from dash.html import Div
 from dash_extensions.enrich import (DashProxy,
@@ -7,7 +9,7 @@ import dash_mantine_components as dmc
 import pandas as pd
 import plotly.express as px
 from sqlalchemy import create_engine
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 CARD_STYLE = dict(withBorder=True,
                   shadow="sm",
@@ -25,7 +27,8 @@ class EncostDash(DashProxy):
 """
     Запрос из базы данных
 """
-engine = create_engine("sqlite:///../testDB.db")
+APP_PATH = str(Path(__file__).parents[1])
+engine = create_engine(f"sqlite:///{APP_PATH}/testDB.db")
 query = """
 SELECT *
 FROM sources
