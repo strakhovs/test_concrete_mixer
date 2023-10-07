@@ -30,7 +30,13 @@ query = """
 SELECT *
 FROM sources
 """
-df = pd.read_sql(query, con=engine)
+df = pd.read_sql(query,
+                 con=engine,
+                 parse_dates=['shift_day',
+                              'calendar_day',
+                              'state_begin',
+                              'state_end',
+                              'shift_begin'])
 
 """
     Цветовая схема
@@ -38,21 +44,6 @@ df = pd.read_sql(query, con=engine)
 color_map = dict(zip(df['reason'], df['color']))
 
 app = EncostDash(name=__name__)
-
-
-def get_date() -> datetime:
-    """
-    Преобразование даты/времени
-    :return:
-    """
-    time_str = df.shift_begin[0]
-    date_str = df.calendar_day[0]
-    time = datetime.strptime(time_str, '%H:%M:%S')
-    date = datetime.strptime(date_str, '%Y-%m-%d')
-    formatted_datetime = time.replace(year=date.year,
-                                      month=date.month,
-                                      day=date.day)
-    return formatted_datetime
 
 
 def get_layout() -> Div:
@@ -64,19 +55,18 @@ def get_layout() -> Div:
                         html.H1(['Клиент: ', df.client_name[0]]),
                         html.Br(),
                         html.P(['Сменный день: ',
-                                df.shift_day[0]]),
+                                df.shift_day[0].strftime('%Y-%m-%d')]),
                         html.P(['Точка учета: ',
                                 df.endpoint_name[0]]),
                         html.P(['Начало периода: ',
-                                get_date().strftime('%H:%M:%S (%d.%m)')]),
+                                (df.shift_day[0] + timedelta(hours=df.shift_begin[0].hour)).strftime('%H:%M:%S (%d.%m)')]),
                         html.P(['Конец периода: ',
-                                (get_date() + timedelta(days=1)).strftime('%H:%M:%S (%d.%m)')]),
-                        dcc.Dropdown(df.reason.unique(),
-                                     id='filters',
-                                     multi=True),
+                                (df.shift_day[0] + timedelta(days=1, hours=df.shift_begin[0].hour)).strftime('%H:%M:%S (%d.%m)')]),
+                        dmc.MultiSelect(id='filters',
+                                        data=df.reason.unique()),
                         dmc.Button('Фильтровать',
                                    id='button'),
-                        ],
+                    ],
                         **CARD_STYLE)
                 ], span=6),
                 dmc.Col([
@@ -104,24 +94,39 @@ app.layout = get_layout()
     State('filters', 'value'),
     Input('initial_pie', 'value'),
     Input('button', 'n_clicks'),
-    prevent_initial_call=False,
 )
-def update_graph(
-        value,
-        *args
-):
-
+def update_graph(value, *args):
     fig = px.timeline(df,
                       'state_begin',
                       'state_end',
                       y="endpoint_name",
                       color='reason',
-                      color_discrete_map=color_map)
+                      color_discrete_map=color_map,
+                      height=200,
+                      custom_data=['state',
+                                   'reason',
+                                   'state_begin',
+                                   'duration_min',
+                                   'shift_day',
+                                   'shift_name',
+                                   'operator']
+                      )
     if value:
         fig.update_traces(visible='legendonly')
         for reason in value:
             fig.update_traces(selector={'name': reason}, visible=True)
-    fig.update_layout(showlegend=False)
+    fig.update_layout(showlegend=False, yaxis={'visible': False})
+    template = """
+        Состояние - <b>%{customdata[0]}</b><br>
+        Причина - <b>%{customdata[1]}</b><br>
+        Начало - <b>%{customdata[2]|%X</b> <i>(%d.%m)</i>}<br>
+        Длительность - <b>%{customdata[3]:.2f}</b> мин.<br>
+        <br>
+        Сменный день - <b>%{customdata[4]|%d.%m.%y}</b><br>
+        Смена - <b>%{customdata[5]}</b><br>
+        Оператор - <b>%{customdata[6]}</b><br><extra></extra>
+    """
+    fig.update_traces(hovertemplate=template)
     return fig
 
 
